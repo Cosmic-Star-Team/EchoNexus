@@ -1,12 +1,13 @@
 #ifndef ECHONEXUS_TYPES_RESPONSE_HPP
 #define ECHONEXUS_TYPES_RESPONSE_HPP
 
-#include <map>
 #include <string>
 #include <string_view>
 #include <type_traits>
 
 #include <glaze/glaze.hpp>
+
+#include <types/common.hpp>
 
 namespace echo::type {
     /// @brief Get the standard HTTP status message for a given status code.
@@ -161,7 +162,7 @@ namespace echo::type {
         /// @brief The body of the response.
         std::string body = "";
         /// @brief Custom headers for the response.
-        std::map<std::string, std::string> headers;
+        map_t headers;
 
         response() = default;
         response(
