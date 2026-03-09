@@ -13,6 +13,7 @@ AlwaysBreakAfterDefinitionReturnType: None
 BreakAfterReturnType: None
 PenaltyReturnTypeOnItsOwnLine: 1000
 BreakFunctionDefinitionParameters: true
+BreakConstructorInitializers: AfterColon
 
 BreakBeforeBraces: Attach
 AccessModifierOffset: -4
@@ -22,7 +23,7 @@ TabWidth: 4
 UseTab: Never
 
 NamespaceIndentation: All
-IndentPPDirectives: Leave
+IndentPPDirectives: None
 
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: WithoutElse
