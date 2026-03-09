@@ -1,13 +1,120 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.23)
+
+# Get vcpkg toolchain setup if not already provided
+set(ECHONEXUS_IS_TOP_LEVEL OFF)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(ECHONEXUS_IS_TOP_LEVEL ON)
+endif()
+
+option(
+    ECHONEXUS_AUTO_SETUP_VCPKG
+    "Auto clone/bootstrap vcpkg into .vcpkg when needed."
+    ON
+)
+
+set(ECHONEXUS_LOCAL_VCPKG_DIR "${CMAKE_SOURCE_DIR}/.vcpkg")
+set(
+    ECHONEXUS_LOCAL_VCPKG_TOOLCHAIN
+    "${ECHONEXUS_LOCAL_VCPKG_DIR}/scripts/buildsystems/vcpkg.cmake"
+)
+set(
+    ECHONEXUS_ENV_VCPKG_TOOLCHAIN
+    "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+)
+
+if(DEFINED CMAKE_TOOLCHAIN_FILE AND EXISTS "${CMAKE_TOOLCHAIN_FILE}")
+    message(
+        STATUS
+        "Using explicit CMAKE_TOOLCHAIN_FILE: ${CMAKE_TOOLCHAIN_FILE}"
+    )
+elseif(EXISTS "${ECHONEXUS_ENV_VCPKG_TOOLCHAIN}")
+    set(
+        CMAKE_TOOLCHAIN_FILE
+        "${ECHONEXUS_ENV_VCPKG_TOOLCHAIN}"
+        CACHE FILEPATH "vcpkg toolchain file" FORCE
+    )
+    message(STATUS "Using vcpkg from VCPKG_ROOT: ${CMAKE_TOOLCHAIN_FILE}")
+elseif(ECHONEXUS_IS_TOP_LEVEL AND ECHONEXUS_AUTO_SETUP_VCPKG)
+    find_program(ECHONEXUS_GIT_EXECUTABLE git)
+    if(NOT ECHONEXUS_GIT_EXECUTABLE)
+        message(
+            FATAL_ERROR
+            "git is required to auto-setup vcpkg. "
+            "Install git or provide CMAKE_TOOLCHAIN_FILE."
+        )
+    endif()
+
+    if(NOT EXISTS "${ECHONEXUS_LOCAL_VCPKG_DIR}/.git")
+        message(STATUS "Cloning vcpkg to ${ECHONEXUS_LOCAL_VCPKG_DIR}")
+        execute_process(
+            COMMAND "${ECHONEXUS_GIT_EXECUTABLE}"
+                clone
+                https://github.com/microsoft/vcpkg.git
+                "${ECHONEXUS_LOCAL_VCPKG_DIR}"
+            RESULT_VARIABLE ECHONEXUS_VCPKG_CLONE_RESULT
+        )
+        if(NOT ECHONEXUS_VCPKG_CLONE_RESULT EQUAL 0)
+            message(
+                FATAL_ERROR
+                "Failed to clone vcpkg "
+                "(exit code: ${ECHONEXUS_VCPKG_CLONE_RESULT})."
+            )
+        endif()
+    endif()
+
+    message(STATUS "Bootstrapping local vcpkg in ${ECHONEXUS_LOCAL_VCPKG_DIR}")
+    if(WIN32)
+        execute_process(
+            COMMAND cmd /c
+                "${ECHONEXUS_LOCAL_VCPKG_DIR}/bootstrap-vcpkg.bat"
+                -disableMetrics
+            WORKING_DIRECTORY "${ECHONEXUS_LOCAL_VCPKG_DIR}"
+            RESULT_VARIABLE ECHONEXUS_VCPKG_BOOTSTRAP_RESULT
+        )
+    else()
+        execute_process(
+            COMMAND "${ECHONEXUS_LOCAL_VCPKG_DIR}/bootstrap-vcpkg.sh"
+                -disableMetrics
+            WORKING_DIRECTORY "${ECHONEXUS_LOCAL_VCPKG_DIR}"
+            RESULT_VARIABLE ECHONEXUS_VCPKG_BOOTSTRAP_RESULT
+        )
+    endif()
+
+    if(NOT ECHONEXUS_VCPKG_BOOTSTRAP_RESULT EQUAL 0)
+        message(
+            FATAL_ERROR
+            "Failed to bootstrap vcpkg "
+            "(exit code: ${ECHONEXUS_VCPKG_BOOTSTRAP_RESULT})."
+        )
+    endif()
+
+    if(NOT EXISTS "${ECHONEXUS_LOCAL_VCPKG_TOOLCHAIN}")
+        message(
+            FATAL_ERROR
+            "vcpkg toolchain not found after bootstrap: "
+            "${ECHONEXUS_LOCAL_VCPKG_TOOLCHAIN}"
+        )
+    endif()
+
+    set(
+        CMAKE_TOOLCHAIN_FILE
+        "${ECHONEXUS_LOCAL_VCPKG_TOOLCHAIN}"
+        CACHE FILEPATH "vcpkg toolchain file" FORCE
+    )
+    message(STATUS "Using local vcpkg toolchain: ${CMAKE_TOOLCHAIN_FILE}")
+elseif(ECHONEXUS_IS_TOP_LEVEL)
+    message(FATAL_ERROR
+        "No valid vcpkg toolchain file found.\n"
+        "Set CMAKE_TOOLCHAIN_FILE, set VCPKG_ROOT, "
+        "or keep ECHONEXUS_AUTO_SETUP_VCPKG=ON."
+    )
+endif()
 
 project(EchoNexus LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
 option(ECHONEXUS_DISABLE_BEAST "Disable Boost.Beast dependency" OFF)
 option(ECHONEXUS_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
+option(ECHONEXUS_BUILD_EXAMPLES "Build examples" ${PROJECT_IS_TOP_LEVEL})
 
 # EchoNexus library sources
 set(LIB_SOURCES
@@ -60,7 +167,21 @@ target_compile_options(EchoNexus PRIVATE
     # ============================================
     # For Unix-like Compiler (GCC/Clang/AppleClang)
     # ============================================
-    $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:
+    $<$<CXX_COMPILER_ID:GNU>:
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wshadow
+    >
+    $<$<CXX_COMPILER_ID:Clang>:
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wconversion
+        -Wshadow
+    >
+    $<$<CXX_COMPILER_ID:AppleClang>:
         -Wall
         -Wextra
         -Wpedantic
@@ -79,5 +200,6 @@ target_compile_options(EchoNexus PRIVATE
 
 target_include_directories(EchoNexus PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 
-# 添加 example 目录
-add_subdirectory(example)
+if(ECHONEXUS_BUILD_EXAMPLES)
+    add_subdirectory(example)
+endif()

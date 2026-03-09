@@ -1,0 +1,37 @@
+[
+  {
+    "label": "CMake: Configure (Debug)",
+    "command": "cmake --preset debug",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "CMake: Build (Debug)",
+    "command": "cmake --build --preset debug",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "CMake: Build & Run (Debug)",
+    "command": "cmake --build --preset debug && ./build/vcpkg-debug/example/app_run",
+    "use_new_terminal": true,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "CMake: Build (Release)",
+    "command": "cmake --build --preset release",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  },
+  {
+    "label": "CMake: Clean",
+    "command": "cmake --build --preset debug --target clean",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  }
+]
