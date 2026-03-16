@@ -79,10 +79,7 @@
   },
   {
     "label": "Build and Run (Debug)",
-    "command": "cmake --build --preset build-debug && ./output/debug/$EXECUTABLE",
-    "env": {
-      "EXECUTABLE": "student_management",
-    },
+    "command": "cmake --build --preset build-debug && ./build/debug/example/example",
     "use_new_terminal": false,
     "allow_concurrent_runs": false,
     "reveal": "always",
