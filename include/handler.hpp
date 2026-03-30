@@ -30,6 +30,16 @@ namespace echo {
     /// The handler returns an awaitable yielding a response.
     using handler_t = std::function<awaitable<response>(std::shared_ptr<request>, std::optional<next_fn_t>)>;
 
+    /// @brief The type of a layer that handles requests.
+    ///
+    /// A layer is a middleware component that can handle a request and optionally
+    /// continue the chain by invoking the next function.
+    struct layer {
+        virtual awaitable<response> handle(std::shared_ptr<request>, std::optional<next_fn_t>) = 0;
+
+        virtual ~layer() = default;
+    };
+
     /// @brief The handler that manages middleware and request handling.
     class handler {
     private:
@@ -67,6 +77,13 @@ namespace echo {
         ///
         /// @param h The handler function to add to the chain.
         void use(handler_t h);
+
+        /// @brief Add a layer to the chain.
+        ///
+        /// The provided layer is appended to the end of the middleware chain.
+        ///
+        /// @param layer The layer to add to the chain.
+        void use(std::shared_ptr<layer> layer);
 
         /// @brief Add all handlers from another handler's chain to this handler.
         ///

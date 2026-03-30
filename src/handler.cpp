@@ -1,4 +1,5 @@
 #include <handler.hpp>
+#include <memory>
 
 namespace echo {
     awaitable<response> handler::dispatch(
@@ -27,6 +28,16 @@ namespace echo {
         handler_t h
     ) {
         state_->chain.push_back(std::move(h));
+    }
+
+    void handler::use(
+        std::shared_ptr<layer> layer
+    ) {
+        state_->chain.push_back(
+            [&layer](std::shared_ptr<request> req, std::optional<next_fn_t> next) -> awaitable<response> {
+                return layer->handle(req, next);
+            }
+        );
     }
 
     void handler::use(
