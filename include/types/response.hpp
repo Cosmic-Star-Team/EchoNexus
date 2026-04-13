@@ -167,20 +167,23 @@ namespace echo::type {
         response() = default;
         response(
             unsigned int code
-        )
-            : status(code), message(get_status_message(code)) {}
+        ) : status(code), message(get_status_message(code)) {}
         response(
             unsigned int code,
             std::string message
-        )
-            : status(code), message(std::move(message)) {}
+        ) : status(code), message(std::move(message)) {}
 
         /// @brief Set a custom header for the response.
         void set_header(
             const std::string& key,
             const std::string& value
         ) {
-            headers[key] = value;
+            std::string lowered_key(key);
+            std::transform(lowered_key.begin(), lowered_key.end(), lowered_key.begin(), [](const unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+
+            headers[lowered_key] = value;
         }
 
         /// @brief Set the body of the response and update Content-Length header.
