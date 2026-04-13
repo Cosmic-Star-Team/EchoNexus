@@ -1,8 +1,9 @@
 #include <algorithm>
 #include <cctype>
-#include <middlewares/cors.hpp>
 #include <stdexcept>
 #include <utility>
+
+#include <middlewares/cors.hpp>
 
 auto echo::middlewares::allow_method::operator()() const -> std::string {
     switch (method_) {
@@ -36,16 +37,16 @@ echo::middlewares::cors::cors(
     case preset::strict:
         break;
     case preset::permissive:
-        any_origin_ = true;
-        any_method_ = true;
-        any_header_ = true;
+        any_origin_         = true;
+        any_method_         = true;
+        any_header_         = true;
         any_exposed_header_ = true;
         break;
     case preset::development:
-        mirror_origin_ = true;
-        mirror_method_ = true;
+        mirror_origin_          = true;
+        mirror_method_          = true;
         mirror_request_headers_ = true;
-        allow_credentials_ = true;
+        allow_credentials_      = true;
         break;
     }
 }
@@ -107,7 +108,7 @@ auto echo::middlewares::cors::allow_method(
     }
 
     const auto method_name = method();
-    bool found = false;
+    bool found             = false;
     for (const auto& existing : allowed_methods_) {
         if (existing() == method_name) {
             found = true;
@@ -243,13 +244,11 @@ auto echo::middlewares::cors::handle(
     std::shared_ptr<echo::type::request> req,
     std::optional<echo::next_fn_t> next
 ) -> echo::awaitable<echo::type::response> {
-    const auto request_origin = req->get_header("Origin");
-    const auto request_method_header = req->get_header("Access-Control-Request-Method");
+    const auto request_origin         = req->get_header("Origin");
+    const auto request_method_header  = req->get_header("Access-Control-Request-Method");
     const auto request_headers_header = req->get_header("Access-Control-Request-Headers");
-    const bool is_preflight = req->method == "OPTIONS"
-        && request_origin
-        && request_method_header
-        && !request_method_header->empty();
+    const bool is_preflight =
+        req->method == "OPTIONS" && request_origin && request_method_header && !request_method_header->empty();
 
     echo::type::response response;
     if (is_preflight) {
@@ -265,19 +264,22 @@ auto echo::middlewares::cors::handle(
     }
 
     const std::string origin = *request_origin;
-    const bool origin_allowed = any_origin_
-        || mirror_origin_
-        || std::find(allowed_origins_.begin(), allowed_origins_.end(), origin) != allowed_origins_.end();
+    const bool origin_allowed =
+        any_origin_ || mirror_origin_ ||
+        std::find(allowed_origins_.begin(), allowed_origins_.end(), origin) != allowed_origins_.end();
 
     if (!origin_allowed) {
         co_return response;
     }
 
     if (!is_preflight) {
+        bool origin_wildcard_response = false;
+
         if (mirror_origin_) {
             response.set_header("Access-Control-Allow-Origin", origin);
         } else if (any_origin_) {
             response.set_header("Access-Control-Allow-Origin", "*");
+            origin_wildcard_response = true;
         } else {
             response.set_header("Access-Control-Allow-Origin", origin);
         }
@@ -301,7 +303,7 @@ auto echo::middlewares::cors::handle(
             response.set_header("Access-Control-Expose-Headers", joined);
         }
 
-        {
+        if (!origin_wildcard_response) {
             std::vector<std::string> tokens;
 
             if (const auto existing = response.headers.find("Vary"); existing != response.headers.end()) {
@@ -342,31 +344,30 @@ auto echo::middlewares::cors::handle(
                 }
             }
 
-            for (const auto& token : { std::string("Origin") }) {
-                bool found = false;
-                for (const auto& existing_token : tokens) {
-                    if (existing_token.size() != token.size()) {
-                        continue;
-                    }
+            const std::string token = "Origin";
+            bool found_token        = false;
+            for (const auto& existing_token : tokens) {
+                if (existing_token.size() != token.size()) {
+                    continue;
+                }
 
-                    bool equal = true;
-                    for (size_t index = 0; index < token.size(); ++index) {
-                        if (std::tolower(static_cast<unsigned char>(existing_token[index])) !=
-                            std::tolower(static_cast<unsigned char>(token[index]))) {
-                            equal = false;
-                            break;
-                        }
-                    }
-
-                    if (equal) {
-                        found = true;
+                bool equal = true;
+                for (size_t index = 0; index < token.size(); ++index) {
+                    if (std::tolower(static_cast<unsigned char>(existing_token[index])) !=
+                        std::tolower(static_cast<unsigned char>(token[index]))) {
+                        equal = false;
                         break;
                     }
                 }
 
-                if (!found) {
-                    tokens.push_back(token);
+                if (equal) {
+                    found_token = true;
+                    break;
                 }
+            }
+
+            if (!found_token) {
+                tokens.push_back(token);
             }
 
             if (!tokens.empty()) {
@@ -432,7 +433,8 @@ auto echo::middlewares::cors::handle(
 
                             bool match = true;
                             for (size_t index = 0; index < allowed_header.size(); ++index) {
-                                if (std::tolower(static_cast<unsigned char>(allowed_header[index])) != lowered_token[index]) {
+                                if (std::tolower(static_cast<unsigned char>(allowed_header[index])) !=
+                                    lowered_token[index]) {
                                     match = false;
                                     break;
                                 }
@@ -483,7 +485,8 @@ auto echo::middlewares::cors::handle(
 
                         bool match = true;
                         for (size_t index = 0; index < allowed_header.size(); ++index) {
-                            if (std::tolower(static_cast<unsigned char>(allowed_header[index])) != lowered_token[index]) {
+                            if (std::tolower(static_cast<unsigned char>(allowed_header[index])) !=
+                                lowered_token[index]) {
                                 match = false;
                                 break;
                             }
@@ -522,8 +525,8 @@ auto echo::middlewares::cors::handle(
     std::string allow_methods_value;
     if (mirror_method_ && request_method_header) {
         allow_methods_value = *request_method_header;
-    } else if (any_method_) {
-        allow_methods_value = "*";
+    } else if (any_method_ && request_method_header) {
+        allow_methods_value = *request_method_header;
     } else {
         for (size_t index = 0; index < allowed_methods_.size(); ++index) {
             if (index > 0) {
@@ -538,10 +541,10 @@ auto echo::middlewares::cors::handle(
         response.set_header("Access-Control-Allow-Methods", allow_methods_value);
     }
 
-    if (mirror_request_headers_ && request_headers_header) {
+    if (mirror_request_headers_ && request_headers_header && !request_headers_header->empty()) {
         response.set_header("Access-Control-Allow-Headers", *request_headers_header);
-    } else if (any_header_) {
-        response.set_header("Access-Control-Allow-Headers", "*");
+    } else if (any_header_ && request_headers_header && !request_headers_header->empty()) {
+        response.set_header("Access-Control-Allow-Headers", *request_headers_header);
     } else if (!allowed_headers_.empty()) {
         std::string headers_value;
         for (size_t index = 0; index < allowed_headers_.size(); ++index) {
@@ -600,7 +603,10 @@ auto echo::middlewares::cors::handle(
             }
         }
 
-        for (const auto& token : { std::string("Origin"), std::string("Access-Control-Request-Method"), std::string("Access-Control-Request-Headers") }) {
+        for (const auto& token :
+             {std::string("Origin"),
+              std::string("Access-Control-Request-Method"),
+              std::string("Access-Control-Request-Headers")}) {
             bool found = false;
             for (const auto& existing_token : tokens) {
                 if (existing_token.size() != token.size()) {
