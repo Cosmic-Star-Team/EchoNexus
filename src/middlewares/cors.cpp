@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <middlewares/cors.hpp>
 #include <stdexcept>
+#include <utility>
 
 auto echo::middlewares::allow_method::operator()() const -> std::string {
     switch (method_) {
@@ -22,7 +23,7 @@ auto echo::middlewares::allow_method::operator()() const -> std::string {
         return "TRACE";
     }
 
-    return {};
+    throw std::invalid_argument("invalid allow_method value");
 }
 
 echo::middlewares::cors::cors() = default;
@@ -81,6 +82,11 @@ auto echo::middlewares::cors::allow_origin(
 auto echo::middlewares::cors::allow_origins(
     std::vector<std::string> origins
 ) -> cors& {
+    if (std::find(origins.begin(), origins.end(), "*") != origins.end()) {
+        allow_origin("*");
+        return *this;
+    }
+
     for (auto& origin : origins) {
         allow_origin(origin);
     }
@@ -103,7 +109,7 @@ auto echo::middlewares::cors::allow_method(
     const auto exists = std::find_if(
         allowed_methods_.begin(),
         allowed_methods_.end(),
-        [&](const allow_method& existing) {
+        [&](const ::echo::middlewares::allow_method& existing) {
             return existing() == method_name;
         }
     );
@@ -158,6 +164,11 @@ auto echo::middlewares::cors::allow_header(
 auto echo::middlewares::cors::allow_headers(
     std::vector<std::string> headers
 ) -> cors& {
+    if (std::find(headers.begin(), headers.end(), "*") != headers.end()) {
+        allow_header("*");
+        return *this;
+    }
+
     for (auto& header : headers) {
         allow_header(header);
     }
@@ -193,6 +204,11 @@ auto echo::middlewares::cors::expose_header(
 auto echo::middlewares::cors::expose_headers(
     std::vector<std::string> headers
 ) -> cors& {
+    if (std::find(headers.begin(), headers.end(), "*") != headers.end()) {
+        expose_header("*");
+        return *this;
+    }
+
     for (auto& header : headers) {
         expose_header(header);
     }
@@ -227,7 +243,7 @@ auto echo::middlewares::cors::handle(
     std::optional<echo::next_fn_t> next
 ) -> echo::awaitable<echo::type::response> {
     if (next) {
-        co_return (*next)(req);
+        co_return co_await (*next)(req);
     }
 
     co_return echo::type::response(404);
