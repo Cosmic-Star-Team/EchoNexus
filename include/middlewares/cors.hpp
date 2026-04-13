@@ -4,6 +4,7 @@
 #include <boost/asio/awaitable.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -46,7 +47,7 @@ namespace echo::middlewares {
 
         auto handle(
             std::shared_ptr<echo::type::request>,
-            std::optional<next_fn_t>
+            std::optional<echo::next_fn_t>
         ) -> echo::awaitable<echo::type::response> override;
 
     private:
