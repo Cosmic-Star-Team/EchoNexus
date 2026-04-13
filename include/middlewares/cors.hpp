@@ -16,7 +16,7 @@
 namespace echo::middlewares {
 
     struct allow_method {
-        enum methods { GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD, TRACE };
+        enum methods { GET, POS, PUT, PAT, DEL, OPT, HEA, TRC };
 
         constexpr allow_method(
             methods m
