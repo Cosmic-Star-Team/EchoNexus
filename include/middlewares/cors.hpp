@@ -44,7 +44,10 @@ namespace echo::middlewares {
         auto allow_credentials(bool enabled) -> cors&;
         auto max_age(std::uint32_t seconds) -> cors&;
 
-        auto handle(std::shared_ptr<request>, std::optional<next_fn_t>) -> awaitable<response> override;
+        auto handle(
+            std::shared_ptr<echo::type::request>,
+            std::optional<next_fn_t>
+        ) -> echo::awaitable<echo::type::response> override;
 
     private:
         std::vector<std::string> allowed_origins_;
