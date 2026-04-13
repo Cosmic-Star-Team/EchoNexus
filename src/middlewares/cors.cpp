@@ -107,15 +107,15 @@ auto echo::middlewares::cors::allow_method(
     }
 
     const auto method_name = method();
-    const auto exists = std::find_if(
-        allowed_methods_.begin(),
-        allowed_methods_.end(),
-        [&](const ::echo::middlewares::allow_method& existing) {
-            return existing() == method_name;
+    bool found = false;
+    for (const auto& existing : allowed_methods_) {
+        if (existing() == method_name) {
+            found = true;
+            break;
         }
-    );
+    }
 
-    if (exists == allowed_methods_.end()) {
+    if (!found) {
         allowed_methods_.push_back(std::move(method));
     }
 
