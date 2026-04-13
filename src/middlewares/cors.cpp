@@ -270,90 +270,7 @@ auto echo::middlewares::cors::handle(
         co_return response;
     }
 
-    auto update_vary_header = [&](const std::vector<std::string>& required_tokens) {
-        std::vector<std::string> tokens;
-
-        if (const auto existing = response.headers.find("Vary"); existing != response.headers.end()) {
-            std::string buffer;
-            for (char ch : existing->second) {
-                if (ch == ',') {
-                    size_t start = 0;
-                    while (start < buffer.size() && std::isspace(static_cast<unsigned char>(buffer[start]))) {
-                        ++start;
-                    }
-                    size_t end = buffer.size();
-                    while (end > start && std::isspace(static_cast<unsigned char>(buffer[end - 1]))) {
-                        --end;
-                    }
-                    if (start < end) {
-                        tokens.push_back(buffer.substr(start, end - start));
-                    }
-
-                    buffer.clear();
-                    continue;
-                }
-
-                buffer += ch;
-            }
-
-            if (!buffer.empty()) {
-                size_t start = 0;
-                while (start < buffer.size() && std::isspace(static_cast<unsigned char>(buffer[start]))) {
-                    ++start;
-                }
-                size_t end = buffer.size();
-                while (end > start && std::isspace(static_cast<unsigned char>(buffer[end - 1]))) {
-                    --end;
-                }
-                if (start < end) {
-                    tokens.push_back(buffer.substr(start, end - start));
-                }
-            }
-        }
-
-        auto case_insensitive_equal = [](const std::string& left, const std::string& right) {
-            if (left.size() != right.size()) {
-                return false;
-            }
-
-            for (size_t index = 0; index < left.size(); ++index) {
-                if (std::tolower(static_cast<unsigned char>(left[index])) != std::tolower(static_cast<unsigned char>(right[index]))) {
-                    return false;
-                }
-            }
-
-            return true;
-        };
-
-        for (const auto& token : required_tokens) {
-            bool found = false;
-            for (const auto& existing_token : tokens) {
-                if (case_insensitive_equal(existing_token, token)) {
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found) {
-                tokens.push_back(token);
-            }
-        }
-
-        if (!tokens.empty()) {
-            std::string joined;
-            for (size_t index = 0; index < tokens.size(); ++index) {
-                if (index > 0) {
-                    joined += ", ";
-                }
-
-                joined += tokens[index];
-            }
-
-            response.set_header("Vary", joined);
-        }
-    };
-
-    auto set_allow_origin = [&]() {
+    if (!is_preflight) {
         if (mirror_origin_) {
             response.set_header("Access-Control-Allow-Origin", origin);
         } else if (any_origin_) {
@@ -361,15 +278,14 @@ auto echo::middlewares::cors::handle(
         } else {
             response.set_header("Access-Control-Allow-Origin", origin);
         }
-    };
 
-    auto set_expose_headers = [&]() {
-        if (any_exposed_header_) {
-            response.set_header("Access-Control-Expose-Headers", "*");
-            return;
+        if (allow_credentials_) {
+            response.set_header("Access-Control-Allow-Credentials", "true");
         }
 
-        if (!exposed_headers_.empty()) {
+        if (any_exposed_header_) {
+            response.set_header("Access-Control-Expose-Headers", "*");
+        } else if (!exposed_headers_.empty()) {
             std::string joined;
             for (size_t index = 0; index < exposed_headers_.size(); ++index) {
                 if (index > 0) {
@@ -381,17 +297,89 @@ auto echo::middlewares::cors::handle(
 
             response.set_header("Access-Control-Expose-Headers", joined);
         }
-    };
 
-    if (!is_preflight) {
-        set_allow_origin();
+        {
+            std::vector<std::string> tokens;
 
-        if (allow_credentials_) {
-            response.set_header("Access-Control-Allow-Credentials", "true");
+            if (const auto existing = response.headers.find("Vary"); existing != response.headers.end()) {
+                std::string buffer;
+                for (char ch : existing->second) {
+                    if (ch == ',') {
+                        size_t start = 0;
+                        while (start < buffer.size() && std::isspace(static_cast<unsigned char>(buffer[start]))) {
+                            ++start;
+                        }
+                        size_t end = buffer.size();
+                        while (end > start && std::isspace(static_cast<unsigned char>(buffer[end - 1]))) {
+                            --end;
+                        }
+                        if (start < end) {
+                            tokens.push_back(buffer.substr(start, end - start));
+                        }
+
+                        buffer.clear();
+                        continue;
+                    }
+
+                    buffer += ch;
+                }
+
+                if (!buffer.empty()) {
+                    size_t start = 0;
+                    while (start < buffer.size() && std::isspace(static_cast<unsigned char>(buffer[start]))) {
+                        ++start;
+                    }
+                    size_t end = buffer.size();
+                    while (end > start && std::isspace(static_cast<unsigned char>(buffer[end - 1]))) {
+                        --end;
+                    }
+                    if (start < end) {
+                        tokens.push_back(buffer.substr(start, end - start));
+                    }
+                }
+            }
+
+            for (const auto& token : { std::string("Origin") }) {
+                bool found = false;
+                for (const auto& existing_token : tokens) {
+                    if (existing_token.size() != token.size()) {
+                        continue;
+                    }
+
+                    bool equal = true;
+                    for (size_t index = 0; index < token.size(); ++index) {
+                        if (std::tolower(static_cast<unsigned char>(existing_token[index])) !=
+                            std::tolower(static_cast<unsigned char>(token[index]))) {
+                            equal = false;
+                            break;
+                        }
+                    }
+
+                    if (equal) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found) {
+                    tokens.push_back(token);
+                }
+            }
+
+            if (!tokens.empty()) {
+                std::string joined;
+                for (size_t index = 0; index < tokens.size(); ++index) {
+                    if (index > 0) {
+                        joined += ", ";
+                    }
+
+                    joined += tokens[index];
+                }
+
+                response.set_header("Vary", joined);
+            }
         }
 
-        set_expose_headers();
-        update_vary_header({ "Origin" });
         co_return response;
     }
 
@@ -516,7 +504,13 @@ auto echo::middlewares::cors::handle(
         co_return response;
     }
 
-    set_allow_origin();
+    if (mirror_origin_) {
+        response.set_header("Access-Control-Allow-Origin", origin);
+    } else if (any_origin_) {
+        response.set_header("Access-Control-Allow-Origin", "*");
+    } else {
+        response.set_header("Access-Control-Allow-Origin", origin);
+    }
 
     if (allow_credentials_) {
         response.set_header("Access-Control-Allow-Credentials", "true");
@@ -562,6 +556,86 @@ auto echo::middlewares::cors::handle(
         response.set_header("Access-Control-Max-Age", std::to_string(*max_age_));
     }
 
-    update_vary_header({ "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers" });
+    {
+        std::vector<std::string> tokens;
+
+        if (const auto existing = response.headers.find("Vary"); existing != response.headers.end()) {
+            std::string buffer;
+            for (char ch : existing->second) {
+                if (ch == ',') {
+                    size_t start = 0;
+                    while (start < buffer.size() && std::isspace(static_cast<unsigned char>(buffer[start]))) {
+                        ++start;
+                    }
+                    size_t end = buffer.size();
+                    while (end > start && std::isspace(static_cast<unsigned char>(buffer[end - 1]))) {
+                        --end;
+                    }
+                    if (start < end) {
+                        tokens.push_back(buffer.substr(start, end - start));
+                    }
+
+                    buffer.clear();
+                    continue;
+                }
+
+                buffer += ch;
+            }
+
+            if (!buffer.empty()) {
+                size_t start = 0;
+                while (start < buffer.size() && std::isspace(static_cast<unsigned char>(buffer[start]))) {
+                    ++start;
+                }
+                size_t end = buffer.size();
+                while (end > start && std::isspace(static_cast<unsigned char>(buffer[end - 1]))) {
+                    --end;
+                }
+                if (start < end) {
+                    tokens.push_back(buffer.substr(start, end - start));
+                }
+            }
+        }
+
+        for (const auto& token : { std::string("Origin"), std::string("Access-Control-Request-Method"), std::string("Access-Control-Request-Headers") }) {
+            bool found = false;
+            for (const auto& existing_token : tokens) {
+                if (existing_token.size() != token.size()) {
+                    continue;
+                }
+
+                bool equal = true;
+                for (size_t index = 0; index < token.size(); ++index) {
+                    if (std::tolower(static_cast<unsigned char>(existing_token[index])) !=
+                        std::tolower(static_cast<unsigned char>(token[index]))) {
+                        equal = false;
+                        break;
+                    }
+                }
+
+                if (equal) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                tokens.push_back(token);
+            }
+        }
+
+        if (!tokens.empty()) {
+            std::string joined;
+            for (size_t index = 0; index < tokens.size(); ++index) {
+                if (index > 0) {
+                    joined += ", ";
+                }
+
+                joined += tokens[index];
+            }
+
+            response.set_header("Vary", joined);
+        }
+    }
     co_return response;
 }
