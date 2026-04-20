@@ -61,7 +61,8 @@ namespace echo::type {
 
                 bool equal = true;
                 for (std::size_t index = 0; index < header_key.size(); ++index) {
-                    if (static_cast<char>(std::tolower(static_cast<unsigned char>(header_key[index]))) != lowered_key[index]) {
+                    if (static_cast<char>(std::tolower(static_cast<unsigned char>(header_key[index]))) !=
+                        lowered_key[index]) {
                         equal = false;
                         break;
                     }
@@ -101,6 +102,8 @@ namespace echo::type {
             return std::any_cast<T>(&it->second);
         }
     };
+
+    using request_ptr = std::shared_ptr<request>;
 } // namespace echo::type
 
 #endif // ECHONEXUS_TYPES_REQUEST_HPP

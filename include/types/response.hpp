@@ -200,9 +200,7 @@ namespace echo::type {
             return &it->second;
         }
 
-        [[nodiscard]] const map_t& get_headers() const {
-            return headers;
-        }
+        [[nodiscard]] const map_t& get_headers() const { return headers; }
 
         /// @brief Set the body of the response and update Content-Length header.
         void set_body(

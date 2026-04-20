@@ -1,14 +1,45 @@
+#include <chrono>
 #include <middlewares/logger.hpp>
 #include <middlewares/router.hpp>
 #include <serve.hpp>
+#include <types/request.hpp>
+#include <types/response.hpp>
 
 #include <exception>
+#include <format>
 #include <memory>
 #include <optional>
 #include <print>
 #include <string>
 
-int main() {
+auto global_start = std::chrono::high_resolution_clock::now();
+
+namespace api {
+    auto info(
+        echo::type::request_ptr req,
+        std::optional<echo::next_fn_t>
+    ) -> echo::awaitable<echo::type::response> {
+        auto now  = std::chrono::high_resolution_clock::now();
+        auto diff = now - global_start;
+
+        auto hours   = std::chrono::duration_cast<std::chrono::hours>(diff);
+        auto minutes = std::chrono::duration_cast<std::chrono::minutes>(diff - hours);
+        auto seconds = std::chrono::duration_cast<std::chrono::seconds>(diff - hours - minutes);
+        auto ms      = std::chrono::duration_cast<std::chrono::milliseconds>(diff - hours - minutes - seconds);
+
+        std::unordered_map<std::string, std::string> data = {
+            {"name", "EchoNexus"},
+            {"version", "0.0.0"},
+            {"running", std::format("{}:{}:{}.{}", hours.count(), minutes.count(), seconds.count(), ms.count())},
+        };
+
+        co_return echo::type::response::json(data);
+    }
+} // namespace api
+
+auto main(
+    void
+) -> int {
 #ifdef DISABLE_BOOST_BEAST
     std::println(stderr, "Boost.Beast is disabled. Rebuild without ECHONEXUS_DISABLE_BEAST to run this example.");
     return 1;
@@ -18,47 +49,27 @@ int main() {
 
     echo::nexus app(std::make_unique<echo::beast_executor>());
 
-    auto root = std::make_shared<echo::middlewares::router>();
+    echo::middlewares::router root;
+
+    root.use(echo::middlewares::logger);
+
     echo::middlewares::router api;
-    echo::middlewares::router v1;
+    {
+        api.get("/info", api::info);
+    };
 
-    root->use(echo::middlewares::logger);
-
-    v1.get(
-          "/user",
-          [](std::shared_ptr<echo::type::request> req, std::optional<echo::next_fn_t>)
-              -> echo::awaitable<echo::type::response> {
-              const auto* scope = req->get_ctx<std::string>("scope");
-              const std::string scope_value = scope == nullptr ? "missing" : *scope;
-              co_return echo::type::response::json(std::string(R"({"scope":")") + scope_value + R"("})", 200);
-          }
-      )
-        .layer([](std::shared_ptr<echo::type::request> req, std::optional<echo::next_fn_t> next)
-                   -> echo::awaitable<echo::type::response> {
-            req->set_ctx("scope", std::string("v1-user"));
-            co_return co_await next.value()(req);
-        });
-
-    api.get(
-        "/",
-        [](std::shared_ptr<echo::type::request>, std::optional<echo::next_fn_t>) -> echo::awaitable<echo::type::response> {
-            co_return echo::type::response::text("api root", 200);
-        }
-    );
-    api.nest("/v1", v1);
-
-    root->get(
-        "/",
-        [](std::shared_ptr<echo::type::request>, std::optional<echo::next_fn_t>) -> echo::awaitable<echo::type::response> {
-            co_return echo::type::response::text("EchoNexus", 200);
-        }
-    );
-    root->nest("/api", api);
-
-    app.use(root);
-    app.fallback([](std::shared_ptr<echo::type::request> req, std::optional<echo::next_fn_t>) -> echo::awaitable<echo::type::response> {
-        co_return echo::type::response::text(std::string("No route for ") + req->path, 404);
+    root.get("/", [](echo::type::request_ptr, std::optional<echo::next_fn_t>) -> echo::awaitable<echo::type::response> {
+        co_return echo::type::response::text("Hello, World!", 200);
     });
+    root.nest("/api", api);
+
+    app.use(std::make_shared<echo::middlewares::router>(root));
+    app.fallback(
+        [](std::shared_ptr<echo::type::request> req,
+           std::optional<echo::next_fn_t>) -> echo::awaitable<echo::type::response> {
+            co_return echo::type::response::text(std::string("No route for ") + req->path, 404);
+        }
+    );
 
     constexpr std::uint16_t port = 9000;
     std::println("EchoNexus example listening on http://127.0.0.1:{}", port);
