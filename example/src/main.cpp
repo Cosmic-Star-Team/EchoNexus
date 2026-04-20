@@ -1,10 +1,10 @@
-#include <chrono>
 #include <middlewares/logger.hpp>
 #include <middlewares/router.hpp>
 #include <serve.hpp>
 #include <types/request.hpp>
 #include <types/response.hpp>
 
+#include <chrono>
 #include <exception>
 #include <format>
 #include <memory>
@@ -35,6 +35,46 @@ namespace api {
 
         co_return echo::type::response::json(data);
     }
+
+    namespace v1 {
+        auto user(
+            echo::type::request_ptr req,
+            std::optional<echo::next_fn_t>
+        ) -> echo::awaitable<echo::type::response> {
+            const auto* params = req->get_ctx<std::unordered_map<std::string, std::string>>("params");
+            const auto* scope  = req->get_ctx<std::string>("scope");
+
+            std::unordered_map<std::string, std::string> data = {
+                {"route", "user"},
+                {"uid", params == nullptr ? "missing" : params->at("uid")},
+                {"scope", scope == nullptr ? "missing" : *scope},
+            };
+
+            co_return echo::type::response::json(data);
+        }
+
+        auto user_info(
+            echo::type::request_ptr req,
+            std::optional<echo::next_fn_t>
+        ) -> echo::awaitable<echo::type::response> {
+            const auto* params = req->get_ctx<std::unordered_map<std::string, std::string>>("params");
+
+            std::unordered_map<std::string, std::string> data = {
+                {"route", "info"},
+                {"uid", params == nullptr ? "missing" : params->at("uid")},
+            };
+
+            co_return echo::type::response::json(data);
+        }
+
+        auto with_scope(
+            echo::type::request_ptr req,
+            std::optional<echo::next_fn_t> next
+        ) -> echo::awaitable<echo::type::response> {
+            req->set_ctx("scope", std::string("user"));
+            co_return co_await next.value()(req);
+        }
+    } // namespace v1
 } // namespace api
 
 auto main(
@@ -55,7 +95,14 @@ auto main(
 
     echo::middlewares::router api;
     {
+        echo::middlewares::router v1;
+        {
+            v1.get("/user/{uid}", api::v1::user).layer(api::v1::with_scope);
+            v1.get("/user/{uid}/info", api::v1::user_info);
+        };
+
         api.get("/info", api::info);
+        api.nest("/v1", v1);
     };
 
     root.get("/", [](echo::type::request_ptr, std::optional<echo::next_fn_t>) -> echo::awaitable<echo::type::response> {
