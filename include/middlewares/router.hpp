@@ -74,7 +74,9 @@ namespace echo::middlewares {
         struct mounted_child;
 
         struct method_hash {
-            auto operator()(method m) const noexcept -> std::size_t {
+            auto operator()(
+                method m
+            ) const noexcept -> std::size_t {
                 return static_cast<std::size_t>(m);
             }
         };
@@ -87,14 +89,33 @@ namespace echo::middlewares {
             std::unordered_map<method, endpoint, method_hash> endpoints;
         };
 
+        struct route_segment {
+            bool is_param = false;
+            std::string value;
+        };
+
+        struct dynamic_route {
+            std::string path;
+            std::vector<route_segment> segments;
+            route_bucket bucket;
+            std::size_t literal_segment_count = 0;
+        };
+
+        struct dynamic_match {
+            const route_bucket* bucket = nullptr;
+            std::unordered_map<std::string, std::string> params;
+        };
+
         struct state {
             handler pipeline;
             std::unordered_map<std::string, route_bucket> routes;
+            std::vector<dynamic_route> dynamic_routes;
         };
 
         friend struct mounted_child;
 
         static constexpr std::string_view prefix_ctx_key = "__echo.router.prefix";
+        static constexpr std::string_view params_ctx_key = "params";
 
         std::shared_ptr<state> state_ = std::make_shared<state>();
 
@@ -102,15 +123,17 @@ namespace echo::middlewares {
         static auto join_prefix(std::string_view parent, std::string_view child) -> std::string;
         static auto matches_prefix(std::string_view path, std::string_view prefix) -> bool;
         static auto relative_path_for(std::string_view path, std::string_view prefix) -> std::string;
+        static auto split_path_segments(std::string_view path) -> std::vector<std::string>;
+        static auto parse_dynamic_route(std::string_view path) -> std::optional<dynamic_route>;
+        static auto match_dynamic_route(const dynamic_route& route, std::string_view path)
+            -> std::optional<dynamic_match>;
         static auto parse_method(const std::string& value) -> std::optional<method>;
         static auto method_name(method m) -> const char*;
         static auto allow_header_value(const route_bucket& bucket) -> std::string;
+        auto find_dynamic_route(std::string_view path) -> dynamic_route*;
+        auto find_route_bucket(std::string_view path) -> route_bucket*;
 
-        void register_endpoint(
-            const std::string& path,
-            method route_method,
-            const handler_t& endpoint_handler
-        );
+        void register_endpoint(const std::string& path, method route_method, const handler_t& endpoint_handler);
 
         auto current_prefix(const echo::type::request& req) const -> std::string;
         auto route_tail_for(std::string effective_prefix, std::optional<echo::next_fn_t> outer_next) const

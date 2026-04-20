@@ -15,6 +15,15 @@ namespace {
 
         return value;
     }
+
+    [[nodiscard]] auto parse_dynamic_segment_name(
+        std::string_view segment
+    ) -> std::optional<std::string> {
+        if (segment.size() <= 2) return std::nullopt;
+        if (segment.front() != '{' || segment.back() != '}') return std::nullopt;
+
+        return std::string(segment.substr(1, segment.size() - 2));
+    }
 } // namespace
 
 struct echo::middlewares::router::mounted_child : echo::layer {
@@ -25,8 +34,8 @@ struct echo::middlewares::router::mounted_child : echo::layer {
         std::shared_ptr<echo::type::request> req,
         std::optional<echo::next_fn_t> next
     ) -> echo::awaitable<echo::type::response> override {
-        const auto* parent_prefix_ptr = req->get_ctx<std::string>(router::prefix_ctx_key);
-        const std::string parent_prefix = parent_prefix_ptr == nullptr ? std::string("/") : *parent_prefix_ptr;
+        const auto* parent_prefix_ptr      = req->get_ctx<std::string>(router::prefix_ctx_key);
+        const std::string parent_prefix    = parent_prefix_ptr == nullptr ? std::string("/") : *parent_prefix_ptr;
         const std::string effective_prefix = router::join_prefix(parent_prefix, mount_prefix);
 
         if (!router::matches_prefix(req->path, effective_prefix)) {
@@ -155,8 +164,11 @@ auto echo::middlewares::router::route_builder::on(
 auto echo::middlewares::router::route_builder::layer(
     handler_t h
 ) -> route_builder& {
+    auto* bucket = owner_->find_route_bucket(path_);
+    if (bucket == nullptr) return *this;
+
     for (const auto route_method : selected_methods_) {
-        owner_->state_->routes[path_].endpoints[route_method].chain->use(h);
+        bucket->endpoints[route_method].chain->use(h);
     }
 
     reset_selection_on_next_registration_ = true;
@@ -324,7 +336,7 @@ auto echo::middlewares::router::nest(
     std::string prefix,
     const router& child
 ) -> router& {
-    auto mounted = std::make_shared<mounted_child>();
+    auto mounted          = std::make_shared<mounted_child>();
     mounted->mount_prefix = normalize_path(std::move(prefix));
     mounted->child_state  = child.state_;
 
@@ -343,10 +355,7 @@ auto echo::middlewares::router::handle(
         co_return type::response(404);
     }
 
-    co_return co_await state_->pipeline.handle_with_tail(
-        req,
-        route_tail_for(effective_prefix, std::move(next))
-    );
+    co_return co_await state_->pipeline.handle_with_tail(req, route_tail_for(effective_prefix, std::move(next)));
 }
 
 auto echo::middlewares::router::normalize_path(
@@ -398,6 +407,76 @@ auto echo::middlewares::router::relative_path_for(
     return normalized_path.substr(normalized_prefix.size());
 }
 
+auto echo::middlewares::router::split_path_segments(
+    std::string_view path
+) -> std::vector<std::string> {
+    const std::string normalized_path = normalize_path(std::string(path));
+    if (normalized_path == "/") return {};
+
+    std::vector<std::string> segments;
+    std::size_t start = 1;
+
+    while (start <= normalized_path.size()) {
+        const std::size_t slash = normalized_path.find('/', start);
+        if (slash == std::string::npos) {
+            segments.push_back(normalized_path.substr(start));
+            break;
+        }
+
+        segments.push_back(normalized_path.substr(start, slash - start));
+        start = slash + 1;
+    }
+
+    return segments;
+}
+
+auto echo::middlewares::router::parse_dynamic_route(
+    std::string_view path
+) -> std::optional<dynamic_route> {
+    dynamic_route route;
+    route.path = normalize_path(std::string(path));
+
+    bool has_dynamic_segment = false;
+    for (const auto& segment : split_path_segments(route.path)) {
+        if (auto param_name = parse_dynamic_segment_name(segment); param_name.has_value()) {
+            has_dynamic_segment = true;
+            route.segments.push_back(route_segment{true, std::move(param_name.value())});
+            continue;
+        }
+
+        route.literal_segment_count += 1;
+        route.segments.push_back(route_segment{false, segment});
+    }
+
+    if (!has_dynamic_segment) return std::nullopt;
+    return route;
+}
+
+auto echo::middlewares::router::match_dynamic_route(
+    const dynamic_route& route,
+    std::string_view path
+) -> std::optional<dynamic_match> {
+    const auto path_segments = split_path_segments(path);
+    if (path_segments.size() != route.segments.size()) return std::nullopt;
+
+    dynamic_match match;
+    match.bucket = &route.bucket;
+
+    for (std::size_t index = 0; index < route.segments.size(); ++index) {
+        const auto& route_segment = route.segments[index];
+        const auto& path_segment  = path_segments[index];
+
+        if (route_segment.is_param) {
+            match.params[route_segment.value] = path_segment;
+            continue;
+        }
+
+        if (route_segment.value != path_segment) return std::nullopt;
+    }
+
+    return match;
+}
+
 auto echo::middlewares::router::parse_method(
     const std::string& value
 ) -> std::optional<method> {
@@ -443,7 +522,14 @@ auto echo::middlewares::router::allow_header_value(
     const route_bucket& bucket
 ) -> std::string {
     static constexpr std::array<method, 8> method_order = {
-        method::get, method::post, method::put, method::patch, method::del, method::options, method::head, method::trace
+        method::get,
+        method::post,
+        method::put,
+        method::patch,
+        method::del,
+        method::options,
+        method::head,
+        method::trace
     };
 
     std::string allow;
@@ -467,7 +553,45 @@ void echo::middlewares::router::register_endpoint(
     endpoint endpoint_entry;
     endpoint_entry.chain->fallback(endpoint_handler);
 
-    state_->routes[normalize_path(path)].endpoints[route_method] = std::move(endpoint_entry);
+    const std::string normalized_path = normalize_path(path);
+    if (auto dynamic = parse_dynamic_route(normalized_path); dynamic.has_value()) {
+        auto* existing = find_dynamic_route(normalized_path);
+        if (existing == nullptr) {
+            state_->dynamic_routes.push_back(std::move(dynamic.value()));
+            existing = &state_->dynamic_routes.back();
+        }
+
+        existing->bucket.endpoints[route_method] = std::move(endpoint_entry);
+        return;
+    }
+
+    state_->routes[normalized_path].endpoints[route_method] = std::move(endpoint_entry);
+}
+
+auto echo::middlewares::router::find_dynamic_route(
+    std::string_view path
+) -> dynamic_route* {
+    const std::string normalized_path = normalize_path(std::string(path));
+    const auto route_it               = std::find_if(
+        state_->dynamic_routes.begin(),
+        state_->dynamic_routes.end(),
+        [&normalized_path](const dynamic_route& candidate) { return candidate.path == normalized_path; }
+    );
+
+    if (route_it == state_->dynamic_routes.end()) return nullptr;
+    return &(*route_it);
+}
+
+auto echo::middlewares::router::find_route_bucket(
+    std::string_view path
+) -> route_bucket* {
+    const std::string normalized_path = normalize_path(std::string(path));
+    const auto route_it               = state_->routes.find(normalized_path);
+    if (route_it != state_->routes.end()) return &route_it->second;
+
+    auto* dynamic_route = find_dynamic_route(normalized_path);
+    if (dynamic_route == nullptr) return nullptr;
+    return &dynamic_route->bucket;
 }
 
 auto echo::middlewares::router::current_prefix(
@@ -481,13 +605,29 @@ auto echo::middlewares::router::route_tail_for(
     std::string effective_prefix,
     std::optional<echo::next_fn_t> outer_next
 ) const -> echo::next_fn_t {
-    return [st = state_, effective_prefix = std::move(effective_prefix), outer_next = std::move(outer_next)](
-               std::shared_ptr<type::request> req
-           ) -> awaitable<type::response> {
+    return [st               = state_,
+            effective_prefix = std::move(effective_prefix),
+            outer_next       = std::move(outer_next)](std::shared_ptr<type::request> req) -> awaitable<type::response> {
         const std::string relative_path = relative_path_for(req->path, effective_prefix);
         const auto route_it             = st->routes.find(relative_path);
+        const route_bucket* bucket      = route_it == st->routes.end() ? nullptr : &route_it->second;
+        std::optional<dynamic_match> matched_dynamic_route;
 
-        if (route_it == st->routes.end()) {
+        if (bucket == nullptr) {
+            std::size_t best_literal_count = 0;
+            for (const auto& candidate : st->dynamic_routes) {
+                auto candidate_match = match_dynamic_route(candidate, relative_path);
+                if (!candidate_match.has_value()) continue;
+
+                if (!matched_dynamic_route.has_value() || candidate.literal_segment_count > best_literal_count) {
+                    best_literal_count    = candidate.literal_segment_count;
+                    bucket                = candidate_match->bucket;
+                    matched_dynamic_route = std::move(candidate_match);
+                }
+            }
+        }
+
+        if (bucket == nullptr) {
             if (outer_next.has_value()) co_return co_await outer_next.value()(req);
             co_return type::response(404);
         }
@@ -495,17 +635,44 @@ auto echo::middlewares::router::route_tail_for(
         const auto parsed_method = parse_method(req->method);
         if (!parsed_method.has_value()) {
             type::response res(405);
-            res.set_header("Allow", allow_header_value(route_it->second));
+            res.set_header("Allow", allow_header_value(*bucket));
             co_return res;
         }
 
-        const auto endpoint_it = route_it->second.endpoints.find(parsed_method.value());
-        if (endpoint_it == route_it->second.endpoints.end()) {
+        const auto endpoint_it = bucket->endpoints.find(parsed_method.value());
+        if (endpoint_it == bucket->endpoints.end()) {
             type::response res(405);
-            res.set_header("Allow", allow_header_value(route_it->second));
+            res.set_header("Allow", allow_header_value(*bucket));
             co_return res;
         }
 
-        co_return co_await endpoint_it->second.chain->handle(req);
+        if (!matched_dynamic_route.has_value()) {
+            co_return co_await endpoint_it->second.chain->handle(req);
+        }
+
+        const std::string params_key(params_ctx_key);
+        const auto saved_params_it  = req->context.find(params_key);
+        const bool had_saved_params = saved_params_it != req->context.end();
+        const std::optional<std::any> saved_params =
+            had_saved_params ? std::optional<std::any>(saved_params_it->second) : std::nullopt;
+
+        req->set_ctx(params_key, matched_dynamic_route->params);
+
+        auto restore_params = [&req, &params_key, had_saved_params, &saved_params]() {
+            if (had_saved_params) {
+                req->context[params_key] = *saved_params;
+            } else {
+                req->context.erase(params_key);
+            }
+        };
+
+        try {
+            type::response res = co_await endpoint_it->second.chain->handle(req);
+            restore_params();
+            co_return res;
+        } catch (...) {
+            restore_params();
+            throw;
+        }
     };
 }
