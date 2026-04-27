@@ -115,6 +115,7 @@ project(EchoNexus VERSION 0.0.0 LANGUAGES CXX)
 option(ECHONEXUS_DISABLE_BEAST "Disable Boost.Beast dependency" OFF)
 option(ECHONEXUS_WARNINGS_AS_ERRORS "Treat warnings as errors" ON)
 option(ECHONEXUS_BUILD_EXAMPLES "Build examples" ${PROJECT_IS_TOP_LEVEL})
+option(ECHONEXUS_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
 
 # Find libraries
 set(BOOST_COMPS asio system)
@@ -234,4 +235,9 @@ install(
 
 if(ECHONEXUS_BUILD_EXAMPLES)
     add_subdirectory(example)
+endif()
+
+if(ECHONEXUS_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
