@@ -36,6 +36,16 @@ Once the example is running, open `http://127.0.0.1:9000` in your browser.
 >
 > Use `just build --release` for a release build.
 
+### Run tests
+
+```bash
+just test              # run the full test suite
+just test unit         # run only unit tests
+just test integration  # run only integration tests
+```
+
+Add `--release` if you want to run the release build instead of the default debug build.
+
 You can also try a few routes directly:
 
 ```bash
