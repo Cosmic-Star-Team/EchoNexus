@@ -50,3 +50,13 @@
 
 build/
 .worktrees/
+
+benchmarks/apps/*/.venv/
+benchmarks/apps/*/node_modules/
+benchmarks/apps/axum/target/
+benchmarks/.npm-cache/
+benchmarks/.tmp/
+benchmarks/results
+benchmarks/**/.gradle
+benchmarks/**/.gradle-home
+benchmarks/**/.kotlin

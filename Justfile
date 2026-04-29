@@ -33,3 +33,17 @@ run compiler="" release="" debug_flag="": (configure compiler release debug_flag
     {{ if release != "" { if debug_flag != "" { error("`--debug` and `--release` are mutually exclusive") } else { "" } } else { "" } }}
     {{ if compiler != "" { "cmake --build build/" + replace(replace(replace(replace(replace(compiler, "/", "_"), "\\", "_"), " ", "_"), "+", "x"), ":", "_") + "-" + (if release != "" { "release" } else { "debug" }) + " --target example" } else if release != "" { "cmake --build --preset build-release --target example" } else { "cmake --build --preset build-debug --target example" } }}
     {{ if compiler != "" { "cmake -E chdir build/" + replace(replace(replace(replace(replace(compiler, "/", "_"), "\\", "_"), " ", "_"), "+", "x"), ":", "_") + "-" + (if release != "" { "release" } else { "debug" }) + " example/example" + (if os_family() == "windows" { ".exe" } else { "" }) } else if release != "" { "cmake -E chdir build/release example/example" + (if os_family() == "windows" { ".exe" } else { "" }) } else { "cmake -E chdir build/debug example/example" + (if os_family() == "windows" { ".exe" } else { "" }) } }}
+
+[arg("frameworks", long, help="Comma-separated framework ids")]
+[arg("workloads", long, help="Comma-separated workload ids")]
+[arg("workers", long, help="Comma-separated worker counts")]
+[arg("concurrency", long, help="Comma-separated concurrency values")]
+[arg("warmup", long, help="Warmup seconds")]
+[arg("measure", long, help="Measure seconds")]
+[arg("cooldown", long, help="Cooldown seconds")]
+[arg("output_tag", long="output-tag", help="Optional report filename tag")]
+[arg("debug_flag", long="debug", value="debug", help="Build compiled targets in debug mode")]
+[arg("release", long="release", value="release", help="Build compiled targets in release mode (default)")]
+benchmark preset="" frameworks="" workloads="" workers="" concurrency="" warmup="" measure="" cooldown="" output_tag="" debug_flag="" release="":
+    {{ if release != "" { if debug_flag != "" { error("`--debug` and `--release` are mutually exclusive") } else { "" } } else { "" } }}
+    cd benchmarks && {{ if preset == "setup" { "bun run setup" + (if debug_flag != "" { " --debug" } else if release != "" { " --release" } else { "" }) } else if preset == "smoke" { "bun run smoke" + (if debug_flag != "" { " --debug" } else if release != "" { " --release" } else { "" }) } else if preset == "pilot" { "bun run pilot" + (if debug_flag != "" { " --debug" } else if release != "" { " --release" } else { "" }) } else if preset == "full" { "bun run full" + (if debug_flag != "" { " --debug" } else if release != "" { " --release" } else { "" }) } else { "bun run src/cli.ts" + (if frameworks != "" { " --frameworks '" + frameworks + "'" } else { "" }) + (if workloads != "" { " --workloads '" + workloads + "'" } else { "" }) + (if workers != "" { " --workers '" + workers + "'" } else { "" }) + (if concurrency != "" { " --concurrency '" + concurrency + "'" } else { "" }) + (if debug_flag != "" { " --debug" } else if release != "" { " --release" } else { "" }) + (if warmup != "" { " --warmup '" + warmup + "'" } else { "" }) + (if measure != "" { " --measure '" + measure + "'" } else { "" }) + (if cooldown != "" { " --cooldown '" + cooldown + "'" } else { "" }) + (if output_tag != "" { " --output-tag '" + output_tag + "'" } else { "" }) } }}

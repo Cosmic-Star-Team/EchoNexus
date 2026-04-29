@@ -1,6 +1,24 @@
 find_package(Catch2 3 CONFIG REQUIRED)
 include(Catch)
 
+add_test(
+    NAME echonexus_cmake_vcpkg_subproject
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DECHONEXUS_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DECHONEXUS_TEST_MODE=subproject
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/echo_vcpkg_helper_smoke.cmake
+)
+
+add_test(
+    NAME echonexus_cmake_vcpkg_top_level
+    COMMAND
+        ${CMAKE_COMMAND}
+        -DECHONEXUS_SOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DECHONEXUS_TEST_MODE=top-level
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/echo_vcpkg_helper_smoke.cmake
+)
+
 add_executable(
     echonexus_unit_tests
     unit/handler.test.cpp

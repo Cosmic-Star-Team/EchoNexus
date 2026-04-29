@@ -1,0 +1,12 @@
+{
+  "name": "echonexus-benchmarks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "setup": "bun run src/cli.ts --setup",
+    "smoke": "bun run src/cli.ts --workloads plaintext --workers 1 --concurrency 50 --warmup 2 --measure 5 --cooldown 1",
+    "pilot": "bun run src/cli.ts --workloads plaintext,json,time_json --workers 1 --concurrency 50,200 --warmup 5 --measure 10 --cooldown 2",
+    "full": "bun run src/cli.ts"
+  }
+}
