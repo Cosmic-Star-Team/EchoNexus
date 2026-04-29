@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 
 import { FRAMEWORKS } from "../configs/frameworks";
@@ -109,13 +112,85 @@ describe("framework support", () => {
     const debugConfigure = debugSteps.find((step) => step.description === "Configure the EchoNexus benchmark target");
     const debugBuild = debugSteps.find((step) => step.description === "Build the EchoNexus benchmark target");
 
-    expect(releaseConfigure?.cmd).toContain("/repo/benchmarks/apps/echonexus");
-    expect(releaseConfigure?.cmd).toContain("-DCMAKE_BUILD_TYPE=Release");
-    expect(releaseConfigure?.cmd).toContain("-DVCPKG_MANIFEST_DIR=/repo");
-    expect(releaseConfigure?.cmd).toContain("-DVCPKG_MANIFEST_MODE=ON");
-    expect(releaseBuild?.cmd).toContain("Release");
-    expect(debugConfigure?.cmd).toContain("-DCMAKE_BUILD_TYPE=Debug");
-    expect(debugBuild?.cmd).toContain("Debug");
+    expect(releaseConfigure?.cwd).toBe("/repo/benchmarks/apps/echonexus");
+    expect(releaseConfigure?.cmd).toEqual(["cmake", "--preset", "release"]);
+    expect(releaseBuild?.cwd).toBe("/repo/benchmarks/apps/echonexus");
+    expect(releaseBuild?.cmd).toEqual([
+      "cmake",
+      "--build",
+      "--preset",
+      "build-release",
+      "--target",
+      "echonexus_benchmark",
+    ]);
+    expect(debugConfigure?.cwd).toBe("/repo/benchmarks/apps/echonexus");
+    expect(debugConfigure?.cmd).toEqual(["cmake", "--preset", "debug"]);
+    expect(debugBuild?.cwd).toBe("/repo/benchmarks/apps/echonexus");
+    expect(debugBuild?.cmd).toEqual([
+      "cmake",
+      "--build",
+      "--preset",
+      "build-debug",
+      "--target",
+      "echonexus_benchmark",
+    ]);
+  });
+
+  test("keeps EchoNexus preset binaryDir aligned with cleanup and launch paths", () => {
+    const repoRoot = "/repo";
+    const appDir = join(repoRoot, "benchmarks", "apps", "echonexus");
+    const presetFile = resolve(import.meta.dir, "..", "apps", "echonexus", "CMakePresets.json");
+    const releaseSteps = FRAMEWORKS.echonexus.setup({
+      repoRoot,
+      benchmarksRoot: join(repoRoot, "benchmarks"),
+      platform: "darwin",
+      buildProfile: "release",
+    });
+    const launch = FRAMEWORKS.echonexus.launch({
+      repoRoot,
+      benchmarksRoot: join(repoRoot, "benchmarks"),
+      platform: "darwin",
+      buildProfile: "release",
+      port: 18080,
+      workers: 1,
+      mode: "single-worker",
+    });
+    const presets = JSON.parse(
+      readFileSync(presetFile, "utf8"),
+    ) as {
+      configurePresets: Array<{
+        name: string;
+        generator?: string;
+        binaryDir?: string;
+        cacheVariables?: {
+          VCPKG_MANIFEST_DIR?: string;
+          VCPKG_MANIFEST_MODE?: string;
+        };
+      }>;
+      buildPresets: Array<{ name: string; configurePreset?: string }>;
+    };
+    const basePreset = presets.configurePresets.find((preset) => preset.name === "base");
+    const configurePresetNames = presets.configurePresets.map((preset) => preset.name).sort();
+    const buildPresetNames = presets.buildPresets.map((preset) => preset.name).sort();
+    const buildDebugPreset = presets.buildPresets.find((preset) => preset.name === "build-debug");
+    const buildReleasePreset = presets.buildPresets.find((preset) => preset.name === "build-release");
+    const cacheResetStep = releaseSteps.find((step) => step.description === "Reset the EchoNexus benchmark CMake cache");
+    const filesResetStep = releaseSteps.find(
+      (step) => step.description === "Reset the EchoNexus benchmark CMake files directory",
+    );
+    const expectedBuildDir = resolve(appDir, "../../../build/benchmark-echonexus");
+
+    expect(configurePresetNames).toEqual(["base", "debug", "release"]);
+    expect(buildPresetNames).toEqual(["build-debug", "build-release"]);
+    expect(buildDebugPreset?.configurePreset).toBe("debug");
+    expect(buildReleasePreset?.configurePreset).toBe("release");
+    expect(basePreset?.generator).toBe("Ninja");
+    expect(basePreset?.binaryDir).toBe("${sourceDir}/../../../build/benchmark-echonexus");
+    expect(basePreset?.cacheVariables?.VCPKG_MANIFEST_DIR).toBe("${sourceDir}/../../..");
+    expect(basePreset?.cacheVariables?.VCPKG_MANIFEST_MODE).toBe("ON");
+    expect(cacheResetStep?.cmd.at(-1)).toBe(join(expectedBuildDir, "CMakeCache.txt"));
+    expect(filesResetStep?.cmd.at(-1)).toBe(join(expectedBuildDir, "CMakeFiles"));
+    expect(launch.cmd[0]).toBe(join(expectedBuildDir, "benchmarks", "apps", "echonexus", "echonexus_benchmark"));
   });
 
   test("builds Axum and Gin artifacts instead of running source directly", () => {

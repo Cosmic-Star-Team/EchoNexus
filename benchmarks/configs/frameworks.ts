@@ -48,10 +48,6 @@ function goToolchainEnv(context: SetupContext): Record<string, string> {
   };
 }
 
-function cmakeBuildType(buildProfile: SetupContext["buildProfile"]): "Debug" | "Release" {
-  return buildProfile === "debug" ? "Debug" : "Release";
-}
-
 function echonexusBuildDir(repoRoot: string): string {
   return join(repoRoot, "build", "benchmark-echonexus");
 }
@@ -126,8 +122,10 @@ function springBootGradleCommand(context: SetupContext, task: string): string[] 
 }
 
 function echonexusSetup(context: SetupContext): CommandSpec[] {
-  const buildType = cmakeBuildType(context.buildProfile);
   const buildDir = echonexusBuildDir(context.repoRoot);
+  const appDir = join(context.benchmarksRoot, "apps", "echonexus");
+  const configurePreset = context.buildProfile === "debug" ? "debug" : "release";
+  const buildPreset = context.buildProfile === "debug" ? "build-debug" : "build-release";
 
   return [
     {
@@ -154,30 +152,13 @@ function echonexusSetup(context: SetupContext): CommandSpec[] {
     },
     {
       description: "Configure the EchoNexus benchmark target",
-      cmd: [
-        "cmake",
-        "-S",
-        join(context.benchmarksRoot, "apps", "echonexus"),
-        "-B",
-        buildDir,
-        `-DCMAKE_BUILD_TYPE=${buildType}`,
-        `-DVCPKG_MANIFEST_DIR=${context.repoRoot}`,
-        "-DVCPKG_MANIFEST_MODE=ON",
-      ],
-      cwd: join(context.benchmarksRoot, "apps", "echonexus"),
+      cmd: ["cmake", "--preset", configurePreset],
+      cwd: appDir,
     },
     {
       description: "Build the EchoNexus benchmark target",
-      cmd: [
-        "cmake",
-        "--build",
-        buildDir,
-        "--config",
-        buildType,
-        "--target",
-        "echonexus_benchmark",
-      ],
-      cwd: context.repoRoot,
+      cmd: ["cmake", "--build", "--preset", buildPreset, "--target", "echonexus_benchmark"],
+      cwd: appDir,
     },
   ];
 }

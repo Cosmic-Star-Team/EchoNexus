@@ -177,7 +177,7 @@ The benchmark runner prepares the selected frameworks automatically before load 
 
 Current setup behavior:
 
-- EchoNexus: standalone CMake configure + build from `benchmarks/apps/echonexus`
+- EchoNexus: local CMake preset entrypoint from `benchmarks/apps/echonexus` via `benchmarks/apps/echonexus/CMakePresets.json`
 - FastAPI: create `.venv` and install requirements
 - Flask: create `.venv` and install requirements
 - Koa: `npm install`
@@ -187,6 +187,16 @@ Current setup behavior:
 - Spring Boot: Gradle `bootJar`
 
 `setup` expects toolchains to already be installed. It does not install Bun, Python, Node, Rust, Go, Java, or `oha` for you.
+
+For EchoNexus, the benchmark runner uses the same local preset entrypoint and preset file: `benchmarks/apps/echonexus/CMakePresets.json`. Manual setup is:
+
+```bash
+cd benchmarks/apps/echonexus
+cmake --preset release
+cmake --build --preset build-release --target echonexus_benchmark
+```
+
+For debug builds, use the corresponding `debug` and `build-debug` presets.
 
 At startup, the runner preflights the selected frameworks. If a framework-specific SDK or command is missing, that framework is marked `skipped` immediately and the runner avoids spending setup time on it.
 
