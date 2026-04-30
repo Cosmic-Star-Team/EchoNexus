@@ -29,7 +29,7 @@ Once the example is running, open `http://127.0.0.1:9000` in your browser.
 >
 > ```cmd
 > cd EchoNexus
-> just build          # configure + build (debug)
+> just build          # build the library + example (debug)
 > just clean          # remove CMake caches and build artifacts
 > just test           # run tests
 > just run            # build & run the example
@@ -41,6 +41,7 @@ Once the example is running, open `http://127.0.0.1:9000` in your browser.
 
 ```bash
 just clean             # remove CMake caches and build artifacts
+just build             # build the library + example
 just test              # run the full test suite
 just test unit         # run only unit tests
 just test integration  # run only integration tests
@@ -134,6 +135,7 @@ These are intended to cover common cases without hiding the underlying request f
 - Setting `ECHONEXUS_DISABLE_BEAST=ON` removes the built-in Beast-backed executor. In that mode, the library can still be used with a custom executor, but the bundled example server is not available.
 - `ECHONEXUS_WARNINGS_AS_ERRORS` is enabled by default.
 - `ECHONEXUS_BUILD_EXAMPLES` is enabled automatically when EchoNexus is the top-level project.
+- `ECHONEXUS_BUILD_TESTS` is disabled by default. Enable it with `-DECHONEXUS_BUILD_TESTS=ON` when you want to build the test targets manually.
 - `ECHONEXUS_AUTO_SETUP_VCPKG` only applies when EchoNexus is configured as the top-level project.
 
 ## Project Layout
