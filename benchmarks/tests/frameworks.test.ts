@@ -31,6 +31,18 @@ describe("framework support", () => {
     expect(FRAMEWORKS.springboot.executionModel).toBe("servlet-thread-pool");
   });
 
+  test("does not ignore the Gin go.mod manifest", () => {
+    const repoRoot = resolve(import.meta.dir, "..", "..");
+    const result = Bun.spawnSync({
+      cmd: ["git", "check-ignore", "benchmarks/apps/gin/go.mod"],
+      cwd: repoRoot,
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+
+    expect(result.exitCode).toBe(1);
+  });
+
   test("prefers BENCHMARK_JAVA_HOME for spring boot when provided", () => {
     expect(
       resolveSpringBootJavaHome("darwin", {
