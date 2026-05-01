@@ -149,7 +149,7 @@ If resource sampling is unavailable on the current host, RSS and CPU fields beco
 - CMake
 - a C/C++ compiler toolchain for EchoNexus
 - Python 3
-- Node.js and npm
+- Node.js
 - Rust toolchain
 - Go
 - Java
@@ -180,8 +180,8 @@ Current setup behavior:
 - EchoNexus: local CMake preset entrypoint from `benchmarks/apps/echonexus` via `benchmarks/apps/echonexus/CMakePresets.json`
 - FastAPI: create `.venv` and install requirements
 - Flask: create `.venv` and install requirements
-- Koa: `npm install`
-- Elysia: `npm install`
+- Koa: `bun install --cache-dir ../../.bun-cache --no-progress`
+- Elysia: `bun install --cache-dir ../../.bun-cache --no-progress`
 - Axum: `cargo build --release` or `cargo build`
 - Gin: `go mod download` + `go build -o build/gin-benchmark .`
 - Spring Boot: Gradle `bootJar`

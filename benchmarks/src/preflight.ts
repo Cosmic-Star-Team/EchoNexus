@@ -35,7 +35,7 @@ export function frameworkRequiredCommands(platform: PlatformKind, framework: Fra
       return [pythonLauncher(platform)];
     case "koa":
     case "elysia":
-      return ["node", "npm"];
+      return ["node", "bun"];
     case "axum":
       return ["cargo", "rustc"];
     case "gin":

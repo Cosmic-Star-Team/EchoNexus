@@ -106,6 +106,43 @@ describe("framework support", () => {
     expect(steps[0]?.env?.ORG_GRADLE_VFS_WATCH).toBe("false");
   });
 
+  test("installs JavaScript benchmark dependencies with bun using a workspace-local cache", () => {
+    const koaSteps = FRAMEWORKS.koa.setup({
+      repoRoot: "/repo",
+      benchmarksRoot: "/repo/benchmarks",
+      platform: "windows",
+      buildProfile: "release",
+    });
+    const elysiaSteps = FRAMEWORKS.elysia.setup({
+      repoRoot: "/repo",
+      benchmarksRoot: "/repo/benchmarks",
+      platform: "windows",
+      buildProfile: "release",
+    });
+
+    expect(koaSteps).toHaveLength(2);
+    expect(koaSteps[0]).toEqual({
+      description: "Create a writable bun cache for koa",
+      cmd: ["cmake", "-E", "make_directory", "/repo/benchmarks/.bun-cache"],
+      cwd: "/repo/benchmarks",
+    });
+    expect(koaSteps[1]).toEqual({
+      description: "Install JavaScript dependencies for koa",
+      cmd: ["bun", "install", "--cache-dir", "/repo/benchmarks/.bun-cache", "--no-progress"],
+      cwd: "/repo/benchmarks/apps/koa",
+    });
+
+    expect(elysiaSteps).toHaveLength(2);
+    expect(elysiaSteps[0]?.cmd.at(-1)).toBe("/repo/benchmarks/.bun-cache");
+    expect(elysiaSteps[1]?.cmd).toEqual([
+      "bun",
+      "install",
+      "--cache-dir",
+      "/repo/benchmarks/.bun-cache",
+      "--no-progress",
+    ]);
+  });
+
   test("builds EchoNexus with the requested build profile", () => {
     const releaseSteps = FRAMEWORKS.echonexus.setup({
       repoRoot: "/repo",

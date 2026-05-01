@@ -237,19 +237,19 @@ function flaskLaunch(context: LaunchContext): LaunchPlan {
   };
 }
 
-function npmInstallSetup(appName: string) {
+function bunInstallSetup(appName: string) {
   return (context: SetupContext): CommandSpec[] => {
-    const cacheDir = join(context.benchmarksRoot, ".npm-cache");
+    const cacheDir = join(context.benchmarksRoot, ".bun-cache");
 
     return [
       {
-        description: `Create a writable npm cache for ${appName}`,
+        description: `Create a writable bun cache for ${appName}`,
         cmd: ["cmake", "-E", "make_directory", cacheDir],
         cwd: context.benchmarksRoot,
       },
       {
         description: `Install JavaScript dependencies for ${appName}`,
-        cmd: ["npm", "install", "--cache", cacheDir, "--no-audit", "--no-fund"],
+        cmd: ["bun", "install", "--cache-dir", cacheDir, "--no-progress"],
         cwd: join(context.benchmarksRoot, "apps", appName),
       },
     ];
@@ -426,7 +426,7 @@ export const FRAMEWORKS: Record<FrameworkId, FrameworkConfig> = {
     displayName: "Koa",
     executionModel: "multi-process",
     appDir: "benchmarks/apps/koa",
-    setup: npmInstallSetup("koa"),
+    setup: bunInstallSetup("koa"),
     supportsWorkers: supportsAnyWorkers,
     launch: koaLaunch,
   },
@@ -435,7 +435,7 @@ export const FRAMEWORKS: Record<FrameworkId, FrameworkConfig> = {
     displayName: "Elysia",
     executionModel: "single-process-event-loop",
     appDir: "benchmarks/apps/elysia",
-    setup: npmInstallSetup("elysia"),
+    setup: bunInstallSetup("elysia"),
     supportsWorkers: supportsElysiaWorkers,
     launch: elysiaLaunch,
   },
