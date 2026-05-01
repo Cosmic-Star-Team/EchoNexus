@@ -183,4 +183,48 @@ describe("renderMarkdown", () => {
     expect(markdown).toContain("| koa | multi-process | 1 | 50 | passed | 12345.67 | - | - | 2.22 | 64.50 | 88.90 |  |");
     expect(markdown).not.toContain("NaN%");
   });
+
+  test("renders skipped runtime failure rows with diagnostic notes", () => {
+    const report: BenchmarkSessionReport = {
+      generatedAt: "2026-05-01T12:00:00.000Z",
+      platform: "linux",
+      cpuCount: 8,
+      results: [
+        {
+          framework: "koa",
+          workload: "plaintext",
+          workers: 2,
+          mode: "multi-worker",
+          concurrency: 100,
+          warmupSeconds: 10,
+          measureSeconds: 30,
+          executionModel: "single-process-event-loop",
+          status: "skipped",
+          requestsPerSec: null,
+          successRequestsPerSec: null,
+          p50Ms: null,
+          p95Ms: null,
+          p99Ms: null,
+          maxMs: null,
+          errorRate: null,
+          peakRssMb: null,
+          avgCpuPercent: null,
+          notes: [
+            "benchmark case skipped: Command failed (42): bun run bench",
+            "exit code: 42",
+            "stdout: stdout line",
+          ],
+        },
+      ],
+    };
+
+    const markdown = renderMarkdown(report);
+
+    expect(markdown).toContain(
+      "| koa | single-process-event-loop | 2 | 100 | skipped | - | - | - | - | - | - | benchmark case skipped: Command failed (42): bun run bench; exit code: 42; stdout: stdout line |",
+    );
+    expect(markdown).toContain(
+      "- koa plaintext workers=2 c=100 skipped: benchmark case skipped: Command failed (42): bun run bench; exit code: 42; stdout: stdout line",
+    );
+  });
 });

@@ -1,15 +1,11 @@
 import { existsSync } from "node:fs";
 
-import { FRAMEWORKS } from "../configs/frameworks";
-import { buildCases } from "./cases";
 import { resolveGoExecutable, resolveSpringBootJavaExecutable } from "./executables";
+import { buildFrameworkSkipResults as buildSharedFrameworkSkipResults } from "./skip-results";
+import type { SkippedFramework } from "./skip-results";
 import type { BenchmarkOptions, CaseResult, FrameworkId, PlatformKind } from "./types";
 
-export interface SkippedFramework {
-  framework: FrameworkId;
-  missingCommands: string[];
-  notes: string[];
-}
+export type { SkippedFramework } from "./skip-results";
 
 export interface FrameworkPreflightResult {
   availableFrameworks: FrameworkId[];
@@ -105,38 +101,9 @@ export async function preflightFrameworks(
   };
 }
 
-function emptyMetrics() {
-  return {
-    requestsPerSec: null,
-    successRequestsPerSec: null,
-    p50Ms: null,
-    p95Ms: null,
-    p99Ms: null,
-    maxMs: null,
-    errorRate: null,
-    peakRssMb: null,
-    avgCpuPercent: null,
-  };
-}
-
 export function buildFrameworkSkipResults(options: {
   options: BenchmarkOptions;
   skippedFrameworks: SkippedFramework[];
 }): CaseResult[] {
-  return options.skippedFrameworks.flatMap((skippedFramework) =>
-    buildCases({
-      frameworks: [skippedFramework.framework],
-      workloads: options.options.workloads,
-      workers: options.options.workers,
-      concurrency: options.options.concurrency,
-    }).map((benchmarkCase) => ({
-      ...benchmarkCase,
-      ...emptyMetrics(),
-      executionModel: FRAMEWORKS[skippedFramework.framework].executionModel,
-      warmupSeconds: options.options.warmupSeconds,
-      measureSeconds: options.options.measureSeconds,
-      status: "skipped" as const,
-      notes: [...skippedFramework.notes],
-    })),
-  );
+  return buildSharedFrameworkSkipResults(options);
 }

@@ -4,12 +4,16 @@ import { join, resolve } from "node:path";
 
 import { FRAMEWORKS } from "../configs/frameworks";
 import { buildCases, WORKLOAD_PATHS } from "./cases";
-import { summarizeFailureNotes } from "./failures";
 import { waitForHealth } from "./health";
 import { buildOhaCommand, parseOhaOutput } from "./load";
 import { parseOptions } from "./options";
 import { buildFrameworkSkipResults, commandExists, preflightFrameworks } from "./preflight";
 import { writeReportFiles } from "./report";
+import {
+  buildCaseFailureSkipResult,
+  buildGlobalCommandSkipResults,
+  prepareFrameworksWithSkips,
+} from "./runtime";
 import { startSampler, summarizeResourceSamples } from "./sampler";
 import { collectSystemMetadata } from "./system";
 import { collectToolchainMetadata } from "./toolchains";
@@ -81,15 +85,11 @@ async function runCommand(spec: CommandSpec): Promise<CommandResult> {
   const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
 
   if (exitCode !== 0) {
-    throw new Error(
-      [
-        `Command failed (${exitCode}): ${spec.cmd.join(" ")}`,
-        stdout.trim(),
-        stderr.trim(),
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
+    throw Object.assign(new Error(`Command failed (${exitCode}): ${spec.cmd.join(" ")}`), {
+      exitCode,
+      stdout,
+      stderr,
+    });
   }
 
   if (!spec.silent && stdout.trim()) {
@@ -99,12 +99,16 @@ async function runCommand(spec: CommandSpec): Promise<CommandResult> {
   return { stdout, stderr };
 }
 
-async function ensureCommands(commands: string[]): Promise<void> {
+async function missingCommands(commands: string[]): Promise<string[]> {
+  const missing: string[] = [];
+
   for (const command of commands) {
     if (!(await commandExists(command))) {
-      throw new Error(`Required command not found: ${command}`);
+      missing.push(command);
     }
   }
+
+  return missing;
 }
 
 function requiredGlobalCommands(needsOha: boolean): string[] {
@@ -115,23 +119,21 @@ function requiredGlobalCommands(needsOha: boolean): string[] {
   return ["oha"];
 }
 
-async function prepareBenchmarks(
+async function prepareFramework(
   platform: PlatformKind,
   buildProfile: BenchmarkOptions["buildProfile"],
-  frameworks: FrameworkId[],
+  frameworkId: FrameworkId,
 ): Promise<void> {
-  for (const frameworkId of frameworks) {
-    const framework = FRAMEWORKS[frameworkId];
-    const steps = framework.setup({
-      repoRoot,
-      benchmarksRoot,
-      platform,
-      buildProfile,
-    });
+  const framework = FRAMEWORKS[frameworkId];
+  const steps = framework.setup({
+    repoRoot,
+    benchmarksRoot,
+    platform,
+    buildProfile,
+  });
 
-    for (const step of steps) {
-      await runCommand(step);
-    }
+  for (const step of steps) {
+    await runCommand(step);
   }
 }
 
@@ -152,6 +154,12 @@ async function preflightSelectedFrameworks(
   }
 
   return result;
+}
+
+function warnSkippedFrameworks(skippedFrameworks: { framework: FrameworkId; notes: string[] }[]): void {
+  for (const skippedFramework of skippedFrameworks) {
+    console.warn(`Skipping ${FRAMEWORKS[skippedFramework.framework].displayName}: ${skippedFramework.notes.join("; ")}`);
+  }
 }
 
 async function listUnixProcessTree(rootPid: number): Promise<number[]> {
@@ -261,6 +269,13 @@ async function runOhaAndParse(options: {
   return parseOhaOutput(raw as Parameters<typeof parseOhaOutput>[0]);
 }
 
+interface FailureLike {
+  message?: unknown;
+  exitCode?: unknown;
+  stdout?: unknown;
+  stderr?: unknown;
+}
+
 function emptyMetrics(): LoadMetrics & ResourceMetrics {
   return {
     requestsPerSec: null,
@@ -307,26 +322,82 @@ async function runBenchmarks(options: BenchmarkOptions): Promise<void> {
   const platform = detectPlatform();
   const startedAt = new Date();
   const frameworkPreflight = await preflightSelectedFrameworks(platform, options.frameworks);
-  await ensureCommands(requiredGlobalCommands(frameworkPreflight.availableFrameworks.length > 0));
+  const results: CaseResult[] = buildFrameworkSkipResults({
+    options,
+    skippedFrameworks: frameworkPreflight.skippedFrameworks,
+  });
+  const requiredCommands = requiredGlobalCommands(frameworkPreflight.availableFrameworks.length > 0);
+  const missingGlobalCommands = await missingCommands(requiredCommands);
 
-  if (frameworkPreflight.availableFrameworks.length > 0) {
-    await prepareBenchmarks(platform, options.buildProfile, frameworkPreflight.availableFrameworks);
+  if (missingGlobalCommands.length > 0) {
+    const [system, toolchains] = await Promise.all([
+      collectSystemMetadata(platform),
+      collectToolchainMetadata(runCommand, benchmarksRoot, repoRoot),
+    ]);
+
+    console.warn(`Skipping benchmark session: missing required global command: ${missingGlobalCommands.join(", ")}`);
+    results.push(
+      ...buildGlobalCommandSkipResults({
+        options,
+        missingCommands: missingGlobalCommands,
+        skippedFrameworks: frameworkPreflight.skippedFrameworks,
+      }),
+    );
+
+    const finishedAt = new Date();
+    const report: BenchmarkSessionReport = {
+      generatedAt: finishedAt.toISOString(),
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      totalDurationSeconds: (finishedAt.getTime() - startedAt.getTime()) / 1000,
+      config: {
+        frameworks: options.frameworks,
+        workloads: options.workloads,
+        workers: options.workers,
+        concurrency: options.concurrency,
+        buildProfile: options.buildProfile,
+        warmupSeconds: options.warmupSeconds,
+        measureSeconds: options.measureSeconds,
+        cooldownSeconds: options.cooldownSeconds,
+        outputTag: options.outputTag,
+      },
+      platform,
+      cpuCount:
+        typeof os.availableParallelism === "function"
+          ? os.availableParallelism()
+          : os.cpus().length,
+      system,
+      toolchains,
+      results,
+    };
+    const files = await writeReportFiles(benchmarksRoot, report);
+
+    console.log(`\nResults written to ${files.jsonPath}`);
+    console.log(`Summary written to ${files.markdownPath}`);
+    return;
   }
+
+  const frameworkPreparation = await prepareFrameworksWithSkips({
+    options,
+    frameworks: frameworkPreflight.availableFrameworks,
+    prepareFramework: (frameworkId) => prepareFramework(platform, options.buildProfile, frameworkId),
+  });
+  warnSkippedFrameworks(frameworkPreparation.skippedFrameworks);
+  results.push(...frameworkPreparation.skipResults);
+
+  const runnableFrameworks = frameworkPreparation.availableFrameworks;
 
   const [system, toolchains] = await Promise.all([
     collectSystemMetadata(platform),
     collectToolchainMetadata(runCommand, benchmarksRoot, repoRoot),
   ]);
-  const results: CaseResult[] = buildFrameworkSkipResults({
-    options,
-    skippedFrameworks: frameworkPreflight.skippedFrameworks,
-  });
+
   const port = Number(process.env.BENCHMARK_PORT ?? "18080");
   const cases =
-    frameworkPreflight.availableFrameworks.length === 0
+    runnableFrameworks.length === 0
       ? []
       : buildCases({
-          frameworks: frameworkPreflight.availableFrameworks,
+          frameworks: runnableFrameworks,
           workloads: options.workloads,
           workers: options.workers,
           concurrency: options.concurrency,
@@ -367,7 +438,7 @@ async function runBenchmarks(options: BenchmarkOptions): Promise<void> {
     let stdoutPromise: Promise<string> | undefined;
     let stderrPromise: Promise<string> | undefined;
     let finalResult: CaseResult | null = null;
-    let failureMessage: string | null = null;
+    let failure: FailureLike | null = null;
 
     try {
       const launch = framework.launch({
@@ -449,7 +520,7 @@ async function runBenchmarks(options: BenchmarkOptions): Promise<void> {
         notes,
       };
     } catch (error) {
-      failureMessage = error instanceof Error ? error.message : String(error);
+      failure = error as FailureLike;
     } finally {
       let stdout = "";
       let stderr = "";
@@ -481,18 +552,24 @@ async function runBenchmarks(options: BenchmarkOptions): Promise<void> {
 
       if (finalResult !== null) {
         results.push(finalResult);
-      } else if (failureMessage !== null) {
-        results.push({
-          ...baseResult,
-          ...emptyMetrics(),
-          status: "failed",
-          notes: summarizeFailureNotes({
-            message: failureMessage,
-            exitCode: exitedBeforeShutdown && exitCode !== 0 ? exitCode : undefined,
+      } else if (failure !== null) {
+        results.push(
+          buildCaseFailureSkipResult({
+            case: benchmarkCase,
+            executionModel: framework.executionModel,
+            warmupSeconds: options.warmupSeconds,
+            measureSeconds: options.measureSeconds,
+            error: failure,
+            exitCode:
+              typeof failure.exitCode === "number"
+                ? failure.exitCode
+                : exitedBeforeShutdown && exitCode !== 0
+                  ? exitCode
+                  : undefined,
             stdout,
             stderr,
           }),
-        });
+        );
       }
 
       await sleep(options.cooldownSeconds * 1000);
@@ -537,7 +614,12 @@ async function main(): Promise<void> {
 
   if (options.setupOnly) {
     const frameworkPreflight = await preflightSelectedFrameworks(platform, options.frameworks);
-    await prepareBenchmarks(platform, options.buildProfile, frameworkPreflight.availableFrameworks);
+    const frameworkPreparation = await prepareFrameworksWithSkips({
+      options,
+      frameworks: frameworkPreflight.availableFrameworks,
+      prepareFramework: (frameworkId) => prepareFramework(platform, options.buildProfile, frameworkId),
+    });
+    warnSkippedFrameworks(frameworkPreparation.skippedFrameworks);
     return;
   }
 
