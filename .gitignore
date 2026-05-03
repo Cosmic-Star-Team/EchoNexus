@@ -24,6 +24,7 @@
 
 # Fortran module files
 *.mod
+!**/go.mod
 *.smod
 
 # Compiled Static libraries
@@ -50,3 +51,14 @@
 
 build/
 .worktrees/
+
+benchmarks/apps/*/.venv/
+benchmarks/apps/*/node_modules/
+benchmarks/apps/axum/target/
+benchmarks/.npm-cache/
+benchmarks/.bun-cache/
+benchmarks/.tmp/
+benchmarks/results
+benchmarks/**/.gradle
+benchmarks/**/.gradle-home
+benchmarks/**/.kotlin

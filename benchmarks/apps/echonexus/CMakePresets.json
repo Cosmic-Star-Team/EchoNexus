@@ -10,14 +10,14 @@
       "name": "base",
       "hidden": true,
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
+      "binaryDir": "${sourceDir}/../../../build/benchmark-echonexus",
       "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+        "VCPKG_MANIFEST_DIR": "${sourceDir}/../../..",
+        "VCPKG_MANIFEST_MODE": "ON"
       }
     },
     {
       "name": "debug",
-      "displayName": "Debug Config",
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
@@ -25,7 +25,6 @@
     },
     {
       "name": "release",
-      "displayName": "Release Config",
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
@@ -34,12 +33,12 @@
   ],
   "buildPresets": [
     {
-      "name": "build-release",
-      "configurePreset": "release"
-    },
-    {
       "name": "build-debug",
       "configurePreset": "debug"
+    },
+    {
+      "name": "build-release",
+      "configurePreset": "release"
     }
   ]
 }

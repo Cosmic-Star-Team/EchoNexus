@@ -1,0 +1,8 @@
+{
+  "name": "koa-benchmark",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "koa": "^2.16.2"
+  }
+}
